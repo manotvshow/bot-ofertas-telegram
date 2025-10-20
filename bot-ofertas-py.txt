@@ -1,0 +1,99 @@
+
+import os
+import requests
+from datetime import datetime
+from flask import Flask, jsonify
+
+# Configurações (você vai preencher depois no Railway)
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_TOKEN')
+TELEGRAM_CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL')
+
+app = Flask(__name__)
+
+class BotOfertas:
+    def __init__(self):
+        self.token = TELEGRAM_BOT_TOKEN
+        self.channel_id = TELEGRAM_CHANNEL_ID
+        
+    def enviar_telegram(self, mensagem):
+        """Envia mensagem para o canal do Telegram"""
+        url = f"https://api.telegram.org/bot{self.token}/sendMessage"
+        data = {
+            "chat_id": self.channel_id,
+            "text": mensagem,
+            "parse_mode": "HTML"
+        }
+        
+        try:
+            response = requests.post(url, data=data, timeout=10)
+            print("✅ Mensagem enviada!")
+            return True
+        except Exception as e:
+            print(f"❌ Erro: {e}")
+            return False
+
+    def criar_mensagem(self, produto):
+        """Cria mensagem formatada"""
+        return f"""
+🔥 <b>OFERTA DO DIA!</b>
+
+📦 {produto['nome']}
+💰 <s>R$ {produto['preco_original']}</s>
+💵 <b>R$ {produto['preco_promocional']}</b>
+🎯 {produto['desconto']}% OFF
+
+🔗 <a href="{produto['link']}">COMPRAR AGORA</a>
+
+⚡ Por tempo limitado!
+        """
+
+    def buscar_ofertas(self):
+        """Ofertas de exemplo - depois você melhora"""
+        return [
+            {
+                "nome": "Smartphone Samsung Galaxy A54",
+                "preco_original": "1.899,99",
+                "preco_promocional": "1.299,99",
+                "desconto": 32,
+                "link": "https://amzn.to/3exemplo1"
+            },
+            {
+                "nome": "Fone JBL Tune 510BT",
+                "preco_original": "299,90",
+                "preco_promocional": "179,90",
+                "desconto": 40,
+                "link": "https://amzn.to/3exemplo2"
+            }
+        ]
+
+    def executar_verificacao(self):
+        """Função que envia as ofertas"""
+        print(f"🕒 Iniciando: {datetime.now()}")
+        ofertas = self.buscar_ofertas()
+        enviadas = 0
+        
+        for produto in ofertas:
+            if produto['desconto'] >= 30:
+                mensagem = self.criar_mensagem(produto)
+                if self.enviar_telegram(mensagem):
+                    enviadas += 1
+                import time
+                time.sleep(2)  # Espera 2 segundos
+        
+        return f"✅ {enviadas} ofertas enviadas!"
+
+# Rotas do Flask
+@app.route('/')
+def home():
+    return jsonify({"status": "Bot Online!", "canal": TELEGRAM_CHANNEL_ID})
+
+@app.route('/verificar-ofertas')
+def verificar_ofertas():
+    """Endpoint que o Cron-Job vai acessar"""
+    bot = BotOfertas()
+    resultado = bot.executar_verificacao()
+    return jsonify({"resultado": resultado})
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
