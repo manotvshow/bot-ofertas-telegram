@@ -1,12 +1,13 @@
-
 import os
 import requests
+import time
 from datetime import datetime
 from flask import Flask, jsonify
 
-# Configurações (você vai preencher depois no Railway)
+# Configurações (variáveis de ambiente no Render)
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 TELEGRAM_CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL')
+AMAZON_TAG = os.environ.get('AMAZON_TAG', 'seutag-20')
 
 app = Flask(__name__)
 
@@ -21,79 +22,148 @@ class BotOfertas:
         data = {
             "chat_id": self.channel_id,
             "text": mensagem,
-            "parse_mode": "HTML"
+            "parse_mode": "HTML",
+            "disable_web_page_preview": False
         }
         
         try:
             response = requests.post(url, data=data, timeout=10)
-            print("✅ Mensagem enviada!")
-            return True
+            if response.status_code == 200:
+                print(f"✅ Mensagem enviada com sucesso!")
+                return True
+            else:
+                print(f"❌ Erro no Telegram: {response.text}")
+                return False
         except Exception as e:
-            print(f"❌ Erro: {e}")
+            print(f"❌ Erro ao enviar: {e}")
             return False
 
-    def criar_mensagem(self, produto):
-        """Cria mensagem formatada"""
+    def criar_mensagem_oferta(self, produto):
+        """Cria a mensagem formatada da oferta"""
         return f"""
-🔥 <b>OFERTA DO DIA!</b>
+🔥 <b>OFERTA VERIFICADA!</b>
 
 📦 {produto['nome']}
 💰 <s>R$ {produto['preco_original']}</s>
 💵 <b>R$ {produto['preco_promocional']}</b>
-🎯 {produto['desconto']}% OFF
+🎯 <b>{produto['desconto']}% OFF</b>
 
 🔗 <a href="{produto['link']}">COMPRAR AGORA</a>
 
 ⚡ Por tempo limitado!
+📢 @{self.channel_id.replace('@', '')}
         """
 
-    def buscar_ofertas(self):
-        """Ofertas de exemplo - depois você melhora"""
+    def buscar_ofertas_exemplo(self):
+        """
+        OFERTAS DE EXEMPLO - depois você substitui por API real
+        """
         return [
             {
-                "nome": "Smartphone Samsung Galaxy A54",
+                "nome": "Smartphone Samsung Galaxy A54 5G 128GB",
                 "preco_original": "1.899,99",
                 "preco_promocional": "1.299,99",
                 "desconto": 32,
-                "link": "https://amzn.to/3exemplo1"
+                "link": f"https://amzn.to/3X1yZ2a?tag={AMAZON_TAG}",
+                "categoria": "Celulares"
             },
             {
-                "nome": "Fone JBL Tune 510BT",
+                "nome": "Fone de Ouvido JBL Tune 510BT Sem Fio",
                 "preco_original": "299,90",
-                "preco_promocional": "179,90",
+                "preco_promocional": "179,90", 
                 "desconto": 40,
-                "link": "https://amzn.to/3exemplo2"
+                "link": f"https://amzn.to/3Z8W9bL?tag={AMAZON_TAG}",
+                "categoria": "Áudio"
             }
         ]
 
     def executar_verificacao(self):
-        """Função que envia as ofertas"""
-        print(f"🕒 Iniciando: {datetime.now()}")
-        ofertas = self.buscar_ofertas()
+        """Função principal que será chamada periodicamente"""
+        print(f"🕒 Iniciando verificação: {datetime.now()}")
+        
+        # Buscar ofertas
+        ofertas = self.buscar_ofertas_exemplo()
         enviadas = 0
         
+        # Enviar para o Telegram
         for produto in ofertas:
-            if produto['desconto'] >= 30:
-                mensagem = self.criar_mensagem(produto)
-                if self.enviar_telegram(mensagem):
+            if produto['desconto'] >= 30:  # Filtro mínimo
+                mensagem = self.criar_mensagem_oferta(produto)
+                sucesso = self.enviar_telegram(mensagem)
+                
+                if sucesso:
                     enviadas += 1
-                import time
-                time.sleep(2)  # Espera 2 segundos
+                
+                # Espera 3 segundos entre mensagens
+                time.sleep(3)
         
-        return f"✅ {enviadas} ofertas enviadas!"
+        resultado = f"✅ Verificação concluída! {enviadas} ofertas enviadas em {datetime.now()}"
+        print(resultado)
+        return resultado
+
+# Criar instância do bot
+bot = BotOfertas()
 
 # Rotas do Flask
 @app.route('/')
 def home():
-    return jsonify({"status": "Bot Online!", "canal": TELEGRAM_CHANNEL_ID})
+    return jsonify({
+        "status": "Bot de Ofertas Online - Render + Uptime Robot + Cron-Job",
+        "canal": TELEGRAM_CHANNEL_ID,
+        "ultima_verificacao": datetime.now().isoformat(),
+        "endpoints": {
+            "health": "/health",
+            "verificar_ofertas": "/verificar-ofertas",
+            "teste": "/teste"
+        }
+    })
+
+@app.route('/health')
+def health():
+    """Endpoint de saúde para Uptime Robot"""
+    return jsonify({
+        "status": "healthy", 
+        "time": datetime.now().isoformat(),
+        "message": "Bot está funcionando perfeitamente!"
+    })
 
 @app.route('/verificar-ofertas')
 def verificar_ofertas():
-    """Endpoint que o Cron-Job vai acessar"""
-    bot = BotOfertas()
-    resultado = bot.executar_verificacao()
-    return jsonify({"resultado": resultado})
+    """ENDPOINT que o Cron-Job vai acessar"""
+    try:
+        resultado = bot.executar_verificacao()
+        return jsonify({
+            "success": True,
+            "resultado": resultado,
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
 
+@app.route('/teste')
+def teste():
+    """Endpoint para testar manualmente"""
+    try:
+        # Teste simples - enviar 1 mensagem de teste
+        mensagem_teste = """
+🧪 <b>TESTE DO BOT</b>
+
+✅ Sistema funcionando perfeitamente!
+🕒 Hora: {datetime.now()}
+🔧 Render + Uptime Robot + Cron-Job
+
+<i>Este é apenas um teste</i>
+        """
+        bot.enviar_telegram(mensagem_teste)
+        return jsonify({"status": "Teste enviado com sucesso!"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Executar o Flask
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port, debug=False)
